@@ -10,24 +10,63 @@ const { spawn } = require('child_process');
 const app = express();
 const upload = multer();
 
-function getPageSizeFromViewBox(svgText) {
-  const viewBoxMatch = svgText.match(/viewBox\s*=\s*"([^"]+)"/i);
-  if (!viewBoxMatch) return null;
+function parseSvgLengthToPt(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const m = /^(-?\d+(?:\.\d+)?)([a-z%]*)$/i.exec(raw.trim());
+  if (!m) return null;
 
-  const parts = viewBoxMatch[1]
-    .trim()
-    .split(/\s+/)
-    .map((v) => Number(v));
+  const value = Number(m[1]);
+  const unit = (m[2] || '').toLowerCase();
+  if (!Number.isFinite(value) || value <= 0) return null;
 
-  if (parts.length !== 4 || parts.some((v) => !Number.isFinite(v))) {
-    return null;
+  if (unit === '' || unit === 'px') return (value * 72) / 96;
+  if (unit === 'pt') return value;
+  if (unit === 'mm') return (value * 72) / 25.4;
+  if (unit === 'cm') return (value * 72) / 2.54;
+  if (unit === 'in') return value * 72;
+  if (unit === 'pc') return value * 12;
+  if (unit === 'q') return ((value * 0.25) * 72) / 25.4;
+  return null;
+}
+
+function getSvgAttr(svgText, attrName) {
+  if (!svgText || typeof svgText !== 'string') return null;
+  const re = new RegExp(`\\b${attrName}\\s*=\\s*(["'])([^"']+)\\1`, 'i');
+  const m = svgText.match(re);
+  return m ? m[2] : null;
+}
+
+function formatScaledNumber(n) {
+  if (!Number.isFinite(n)) return '';
+  return String(Number(n.toFixed(6)));
+}
+
+function scaleSvgLengthString(raw, scale) {
+  if (!raw || typeof raw !== 'string') return null;
+  const m = /^(-?\d+(?:\.\d+)?)([a-z%]*)$/i.exec(raw.trim());
+  if (!m) return null;
+  const value = Number(m[1]);
+  const unit = m[2] || '';
+  if (!Number.isFinite(value)) return null;
+  return `${formatScaledNumber(value * scale)}${unit}`;
+}
+
+function getPageSizeFromSvg(svgText) {
+  const widthRaw = getSvgAttr(svgText, 'width');
+  const heightRaw = getSvgAttr(svgText, 'height');
+
+  const widthPt = parseSvgLengthToPt(widthRaw);
+  const heightPt = parseSvgLengthToPt(heightRaw);
+  if (Number.isFinite(widthPt) && widthPt > 0 && Number.isFinite(heightPt) && heightPt > 0) {
+    return [widthPt, heightPt];
   }
 
-  const [, , width, height] = parts;
-  if (width <= 0 || height <= 0) return null;
+  const vb = parseViewBox(svgText);
+  if (vb && vb.width > 0 && vb.height > 0) {
+    return [(vb.width * 72) / 96, (vb.height * 72) / 96];
+  }
 
-  // Interpret viewBox units as points; this keeps vector and aspect ratio correct.
-  return [width, height];
+  return null;
 }
 
 function parseViewBox(svgText) {
@@ -86,8 +125,28 @@ function applyCropPercentToSvg(svgText, cropPercent) {
 
   const nextViewBox = `${cropX} ${cropY} ${cropW} ${cropH}`;
 
+  const nextWidth = (() => {
+    const raw = getSvgAttr(svgText, 'width');
+    const scaled = scaleSvgLengthString(raw, wP / 100);
+    return scaled;
+  })();
+  const nextHeight = (() => {
+    const raw = getSvgAttr(svgText, 'height');
+    const scaled = scaleSvgLengthString(raw, hP / 100);
+    return scaled;
+  })();
+
   if (svgText.match(/viewBox\s*=\s*"[^"]+"/i)) {
-    return svgText.replace(/viewBox\s*=\s*"[^"]+"/i, `viewBox="${nextViewBox}"`);
+    let out = svgText.replace(/viewBox\s*=\s*"[^"]+"/i, `viewBox="${nextViewBox}"`);
+    if (nextWidth) {
+      out = out.replace(/\bwidth\s*=\s*"[^"]+"/i, `width="${nextWidth}"`);
+      out = out.replace(/\bwidth\s*=\s*'[^']+'/i, `width='${nextWidth}'`);
+    }
+    if (nextHeight) {
+      out = out.replace(/\bheight\s*=\s*"[^"]+"/i, `height="${nextHeight}"`);
+      out = out.replace(/\bheight\s*=\s*'[^']+'/i, `height='${nextHeight}'`);
+    }
+    return out;
   }
 
   return svgText;
@@ -95,17 +154,20 @@ function applyCropPercentToSvg(svgText, cropPercent) {
 
 function svgToPdfBuffer(svgText) {
   return new Promise((resolve, reject) => {
-    const pageSize = getPageSizeFromViewBox(svgText) || 'A4';
-    const doc = new PDFDocument({ autoFirstPage: false });
+    const pageSize = getPageSizeFromSvg(svgText) || 'A4';
+    const doc = new PDFDocument({ autoFirstPage: false, margin: 0 });
     const chunks = [];
 
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.addPage({ size: pageSize });
+    doc.addPage({ size: pageSize, margin: 0 });
+    const w = Array.isArray(pageSize) ? pageSize[0] : null;
+    const h = Array.isArray(pageSize) ? pageSize[1] : null;
     SVGtoPDF(doc, svgText, 0, 0, {
       preserveAspectRatio: 'xMidYMid meet',
+      ...(Number.isFinite(w) && Number.isFinite(h) ? { width: w, height: h } : {}),
       assumePt: true,
     });
     doc.end();
@@ -283,8 +345,8 @@ app.get('/diagnostic/vector-test', (req, res) => {
   <text x="100" y="110" font-size="24" text-anchor="middle" fill="#000">Vector</text>
 </svg>`;
 
-  const pageSize = getPageSizeFromViewBox(svg) || 'A4';
-  const doc = new PDFDocument({ autoFirstPage: false });
+  const pageSize = getPageSizeFromSvg(svg) || 'A4';
+  const doc = new PDFDocument({ autoFirstPage: false, margin: 0 });
   const chunks = [];
 
   doc.on('data', (chunk) => chunks.push(chunk));
@@ -294,10 +356,11 @@ app.get('/diagnostic/vector-test', (req, res) => {
     res.send(pdfBuffer);
   });
 
-  doc.addPage({ size: pageSize });
+  doc.addPage({ size: pageSize, margin: 0 });
 
   SVGtoPDF(doc, svg, 0, 0, {
     preserveAspectRatio: 'xMidYMid meet',
+    ...(Array.isArray(pageSize) ? { width: pageSize[0], height: pageSize[1] } : {}),
     assumePt: true,
   });
 

@@ -43,6 +43,7 @@ type VectorPageItem =
       y: number;
       width: number;
       height: number;
+      unit?: 'mm' | 'px';
     }
   | {
       kind: 'text';
@@ -50,6 +51,7 @@ type VectorPageItem =
       x: number;
       y: number;
       fontSize: number;
+      unit?: 'mm' | 'px';
       letterFontSizes?: number[];
       letterOffsets?: number[];
       letterSpacingAfterX?: number[];
@@ -59,6 +61,7 @@ type VectorPageItem =
 
 interface VectorLayoutPage {
   layoutMode: 'vector';
+  unit: 'mm';
   items: VectorPageItem[];
 }
 
@@ -68,6 +71,9 @@ const A4_HEIGHT_PX = 1123;
 const A4_FOOTER_PX = 0;
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
+
+const PX_TO_MM = 25.4 / 96;
+const PT_TO_MM = 25.4 / 72;
 
 function computeFittedImageRectPx(
   boxX: number,
@@ -120,6 +126,27 @@ function computeFittedImageRectPercent(
   return { x, y, width, height };
 }
 
+function computeFittedImageRectMm(
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number,
+  imageW: number,
+  imageH: number
+) {
+  if (!boxW || !boxH || !imageW || !imageH) {
+    return { x: boxX, y: boxY, width: boxW, height: boxH };
+  }
+
+  const scale = Math.min(boxW / imageW, boxH / imageH);
+  const width = imageW * scale;
+  const height = imageH * scale;
+  const x = boxX;
+  const y = boxY;
+
+  return { x, y, width, height };
+}
+
 function mapSlotToFittedPx(
   slotRelativeX: number,
   slotRelativeY: number,
@@ -135,7 +162,7 @@ function mapSlotToFittedPx(
   };
 }
 
-function mapSlotToFittedPercent(
+function mapSlotToFittedMm(
   slotRelativeX: number,
   slotRelativeY: number,
   slotRelativeWidth: number,
@@ -180,6 +207,18 @@ function computeTicketFittedRectPx(page: TicketOutputPage, ticketHeightPx: numbe
   return computeFittedImageRectPx(boxX, boxY, boxW, boxH, srcW, srcH);
 }
 
+function computeTicketFittedRectMm(page: TicketOutputPage, ticketHeightMm: number) {
+  const srcW = page.ticketImageSize?.width || A4_WIDTH_MM;
+  const srcH = page.ticketImageSize?.height || ticketHeightMm;
+
+  const boxX = (page.ticketImageXPercent / 100) * A4_WIDTH_MM;
+  const boxY = (page.ticketImageYPercent / 100) * ticketHeightMm;
+  const boxW = (page.ticketImageWidthPercent / 100) * A4_WIDTH_MM;
+  const boxH = (page.ticketImageHeightPercent / 100) * ticketHeightMm;
+
+  return computeFittedImageRectMm(boxX, boxY, boxW, boxH, srcW, srcH);
+}
+
 function computeTicketFittedRectPercent(page: TicketOutputPage) {
   const srcW = page.ticketImageSize?.width || A4_WIDTH_PX;
   const srcH = page.ticketImageSize?.height || 1;
@@ -201,7 +240,7 @@ function buildVectorLayoutPages(
   pages: TicketOutputPage[],
   opts?: { documentId?: string }
 ): VectorLayoutPage[] {
-  const ticketHeightPx = (A4_HEIGHT_PX - A4_FOOTER_PX) / 4;
+  const ticketHeightMm = A4_HEIGHT_MM / 4;
 
   return pages.map((page) => {
     const items: VectorPageItem[] = [];
@@ -225,9 +264,9 @@ function buildVectorLayoutPages(
     // Add text items for each ticket and configured series slot, mirroring the
     // same positioning logic as the raster layout.
     page.tickets.forEach((ticket, idx) => {
-      const baseY = ticketHeightPx * idx;
+      const baseY = ticketHeightMm * idx;
 
-      const fittedTicket = computeTicketFittedRectPx(page, ticketHeightPx);
+      const fittedTicket = computeTicketFittedRectMm(page, ticketHeightMm);
 
       page.seriesSlots.forEach((slot) => {
         const seriesForSlot = ticket.seriesBySlot[slot.id];
@@ -235,7 +274,7 @@ function buildVectorLayoutPages(
 
         const { slotRelativeX, slotRelativeY } = computeSeriesSlotRelative(page, slot);
 
-        const mapped = mapSlotToFittedPx(
+        const mapped = mapSlotToFittedMm(
           slotRelativeX,
           slotRelativeY,
           0,
@@ -245,18 +284,22 @@ function buildVectorLayoutPages(
 
         const slotX = mapped.x;
         const slotY = baseY + mapped.y;
-        const fontSize =
-          seriesForSlot.letterStyles?.[0]?.fontSize || slot.defaultFontSize;
+        const fontSizePx = seriesForSlot.letterStyles?.[0]?.fontSize || slot.defaultFontSize;
+        const fontSizeMm = fontSizePx * PX_TO_MM;
+        const letterFontSizesMm = seriesForSlot.letterStyles?.map((ls) => (ls.fontSize || slot.defaultFontSize) * PX_TO_MM);
+        const letterOffsetsMm = seriesForSlot.letterStyles?.map((ls) => (ls.offsetY ?? 0) * PX_TO_MM);
+        const letterSpacingAfterXmm = seriesForSlot.letterStyles?.map((ls) => (ls.spacingAfterX ?? 0) * PT_TO_MM);
 
         items.push({
           kind: 'text',
           text: seriesForSlot.seriesValue,
           x: slotX,
-          y: slotY + fontSize,
-          fontSize,
-          letterFontSizes: seriesForSlot.letterStyles?.map((ls) => ls.fontSize),
-          letterOffsets: seriesForSlot.letterStyles?.map((ls) => ls.offsetY ?? 0),
-          letterSpacingAfterX: seriesForSlot.letterStyles?.map((ls) => ls.spacingAfterX ?? 0),
+          y: slotY + fontSizeMm,
+          fontSize: fontSizeMm,
+          unit: 'mm',
+          letterFontSizes: letterFontSizesMm,
+          letterOffsets: letterOffsetsMm,
+          letterSpacingAfterX: letterSpacingAfterXmm,
           fontFamily: slot.fontFamily,
           color: slot.color,
         });
@@ -265,6 +308,7 @@ function buildVectorLayoutPages(
 
     return {
       layoutMode: 'vector',
+      unit: 'mm',
       items,
     };
   });
@@ -386,20 +430,29 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
       // 2) Build lightweight layout JSON using only S3-based src values
       // We mirror the same 3-cars-per-page layout used in this preview, including series text and all series boxes.
-      const ticketHeightPx = (A4_HEIGHT_PX - A4_FOOTER_PX) / 4;
+      const ticketHeightMm = A4_HEIGHT_MM / 4;
       const layoutPages = pages.map((page) => {
         const s3Src = uniqueImages.get(page.ticketImageData) || '';
 
-        const fittedTicket = computeTicketFittedRectPx(page, ticketHeightPx);
+        const fittedTicket = computeTicketFittedRectMm(page, ticketHeightMm);
 
         const items: Array<
-          | { type: 'image'; src: string; x: number; y: number; width: number; height: number }
+          | {
+              type: 'image';
+              src: string;
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+              unit?: 'mm';
+            }
           | {
               type: 'text';
               text: string;
               x: number;
               y: number;
               fontSize: number;
+              unit?: 'mm';
               letterFontSizes?: number[];
               letterOffsets?: number[];
               letterSpacingAfterX?: number[];
@@ -409,7 +462,7 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
         > = [];
 
         page.tickets.forEach((ticket, idx) => {
-          const baseY = ticketHeightPx * idx;
+          const baseY = ticketHeightMm * idx;
 
           // Ticket image area
           items.push({
@@ -419,6 +472,7 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
             y: baseY + fittedTicket.y,
             width: fittedTicket.width,
             height: fittedTicket.height,
+            unit: 'mm',
           });
 
           // Series number text for each configured slot on this ticket
@@ -428,7 +482,7 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
             const { slotRelativeX, slotRelativeY } = computeSeriesSlotRelative(page, slot);
 
-            const mapped = mapSlotToFittedPx(
+            const mapped = mapSlotToFittedMm(
               slotRelativeX,
               slotRelativeY,
               0,
@@ -438,25 +492,29 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
             const slotX = mapped.x;
             const slotY = baseY + mapped.y;
-            const fontSize =
-              seriesForSlot.letterStyles?.[0]?.fontSize || slot.defaultFontSize;
+            const fontSizePx = seriesForSlot.letterStyles?.[0]?.fontSize || slot.defaultFontSize;
+            const fontSizeMm = fontSizePx * PX_TO_MM;
+            const letterFontSizesMm = seriesForSlot.letterStyles?.map((ls) => (ls.fontSize || slot.defaultFontSize) * PX_TO_MM);
+            const letterOffsetsMm = seriesForSlot.letterStyles?.map((ls) => (ls.offsetY ?? 0) * PX_TO_MM);
+            const letterSpacingAfterXmm = seriesForSlot.letterStyles?.map((ls) => (ls.spacingAfterX ?? 0) * PT_TO_MM);
 
             items.push({
               type: 'text',
               text: seriesForSlot.seriesValue,
               x: slotX,
-              y: slotY + fontSize,
-              fontSize,
-              letterFontSizes: seriesForSlot.letterStyles?.map((ls) => ls.fontSize),
-              letterOffsets: seriesForSlot.letterStyles?.map((ls) => ls.offsetY ?? 0),
-              letterSpacingAfterX: seriesForSlot.letterStyles?.map((ls) => ls.spacingAfterX ?? 0),
+              y: slotY + fontSizeMm,
+              fontSize: fontSizeMm,
+              unit: 'mm',
+              letterFontSizes: letterFontSizesMm,
+              letterOffsets: letterOffsetsMm,
+              letterSpacingAfterX: letterSpacingAfterXmm,
               fontFamily: slot.fontFamily,
               color: slot.color,
             });
           });
         });
 
-        return { layoutMode: 'raster' as const, items };
+        return { layoutMode: 'raster', unit: 'mm', items };
       });
 
       // 3) Create background assignment job (no synchronous PDF generation, only S3 references)
@@ -509,7 +567,8 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
     ticket: TicketOnPage,
     ticketHeight: number
   ) => {
-    const fittedPercent = computeTicketFittedRectPercent(page);
+    const toMm = (value: unknown) => (Number(value) || 0) * PX_TO_MM;
+    const fittedMm = computeTicketFittedRectMm(page, ticketHeight);
 
     const lettersHtmlBySlot = page.seriesSlots.map((slot) => {
       const seriesForSlot = ticket.seriesBySlot[slot.id];
@@ -517,21 +576,20 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
       const lettersHtml = seriesText.split('').map((letter, idx) => {
         const style = seriesForSlot?.letterStyles[idx];
-        const fontSize = style?.fontSize || slot.defaultFontSize;
-        const offsetY = style?.offsetY || 0;
-        const cumulativeSpacingPt = seriesText
+        const fontSizeMm = (style?.fontSize || slot.defaultFontSize) * PX_TO_MM;
+        const offsetYmm = (style?.offsetY || 0) * PX_TO_MM;
+        const cumulativeSpacingMm = seriesText
           .split('')
           .slice(0, idx)
-          .reduce((sum, _, i) => sum + (seriesForSlot?.letterStyles[i]?.spacingAfterX || 0), 0);
-        const cumulativeX = cumulativeSpacingPt * (96 / 72);
+          .reduce((sum, _, i) => sum + ((seriesForSlot?.letterStyles[i]?.spacingAfterX || 0) * PT_TO_MM), 0);
 
         const displayLetter = letter === ' ' ? '&nbsp;' : letter;
         return `<span style="
-        font-size: ${fontSize}px;
+        font-size: ${fontSizeMm}mm;
         font-family: ${slot.fontFamily};
         color: ${slot.color};
         display: inline-block;
-        transform: translate(${cumulativeX}px, ${offsetY}px);
+        transform: translate(${cumulativeSpacingMm}mm, ${offsetYmm}mm);
 
         white-space: pre;
       ">${displayLetter}</span>`;
@@ -540,12 +598,12 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
       const { slotRelativeX, slotRelativeY, slotRelativeWidth, slotRelativeHeight } =
         computeSeriesSlotRelative(page, slot);
 
-      const mapped = mapSlotToFittedPercent(
+      const mapped = mapSlotToFittedMm(
         slotRelativeX,
         slotRelativeY,
         slotRelativeWidth,
         slotRelativeHeight,
-        fittedPercent
+        fittedMm
       );
 
       return {
@@ -563,21 +621,21 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
         <div class="ticket-inner">
           <img src="${page.ticketImageData}" class="ticket-image" style="
             position: absolute;
-            left: ${fittedPercent.x}%;
-            top: ${fittedPercent.y}%;
-            width: ${fittedPercent.width}%;
-            height: ${fittedPercent.height}%;
+            left: ${fittedMm.x}mm;
+            top: ${fittedMm.y}mm;
+            width: ${fittedMm.width}mm;
+            height: ${fittedMm.height}mm;
           " />
           ${lettersHtmlBySlot.map(({ lettersHtml, slotRelativeX, slotRelativeY, slotRelativeWidth, slotRelativeHeight, slot }) => `
           <div class="series-slot" style="
-            left: ${slotRelativeX}%;
-            top: ${slotRelativeY}%;
-            width: ${slotRelativeWidth}%;
-            height: ${slotRelativeHeight}%;
+            left: ${slotRelativeX}mm;
+            top: ${slotRelativeY}mm;
+            width: ${slotRelativeWidth}mm;
+            height: ${slotRelativeHeight}mm;
             background-color: ${slot.backgroundColor};
-            border: ${slot.borderWidth}px solid ${slot.borderColor};
-            border-radius: ${slot.borderRadius}px;
-            padding: ${slot.paddingTop}px ${slot.paddingRight}px ${slot.paddingBottom}px ${slot.paddingLeft}px;
+            border: ${toMm(slot.borderWidth)}mm solid ${slot.borderColor};
+            border-radius: ${toMm(slot.borderRadius)}mm;
+            padding: ${toMm(slot.paddingTop)}mm ${toMm(slot.paddingRight)}mm ${toMm(slot.paddingBottom)}mm ${toMm(slot.paddingLeft)}mm;
             transform: rotate(${slot.rotation}deg);
             transform-origin: center center;
             display: flex;
@@ -597,8 +655,6 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
       alert('Please allow popups to print.');
     }
 
-    const ticketHeight = A4_HEIGHT_MM / 4;
-
     const fontFaceCss = (customFonts || [])
       .map(
         (font) => `@font-face {
@@ -612,7 +668,7 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
     const pagesHtml = pages.map((page) => {
       const ticketsHtml = page.tickets.map((ticket) =>
-        renderTicketHtml(page, ticket, ticketHeight)
+        renderTicketHtml(page, ticket, A4_HEIGHT_MM / 4)
       ).join('');
 
       return `
@@ -764,22 +820,22 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
               ref={printContainerRef}
               className="bg-white shadow-2xl relative flex flex-col rounded-none shrink-0"
               style={{
-                width: A4_WIDTH_PX,
-                height: A4_HEIGHT_PX,
+                width: `${A4_WIDTH_MM}mm`,
+                height: `${A4_HEIGHT_MM}mm`,
               }}
             >
               {currentPageData && (
                 <div className="flex flex-col h-full">
                   {currentPageData.tickets.map((ticket, ticketIdx) => {
-                    const ticketHeightPx = (A4_HEIGHT_PX - A4_FOOTER_PX) / 4;
+                    const ticketHeightMm = A4_HEIGHT_MM / 4;
 
-                    const fittedTicket = computeTicketFittedRectPx(currentPageData, ticketHeightPx);
+                    const fittedTicket = computeTicketFittedRectMm(currentPageData, ticketHeightMm);
 
                     return (
                       <div
                         key={ticketIdx}
                         className="relative overflow-hidden border-b border-dashed border-muted-foreground/30 last:border-b-0"
-                        style={{ height: ticketHeightPx }}
+                        style={{ height: `${ticketHeightMm}mm` }}
                       >
                         {/* Ticket image area with overlay */}
                         <div className="absolute inset-0">
@@ -789,10 +845,10 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
                               alt="Ticket"
                               className="absolute"
                               style={{
-                                left: fittedTicket.x,
-                                top: fittedTicket.y,
-                                width: fittedTicket.width,
-                                height: fittedTicket.height,
+                                left: `${fittedTicket.x}mm`,
+                                top: `${fittedTicket.y}mm`,
+                                width: `${fittedTicket.width}mm`,
+                                height: `${fittedTicket.height}mm`,
                               }}
                             />
                             {/* Series Slots Overlay */}
@@ -806,7 +862,7 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
                                   slotRelativeHeight,
                                 } = computeSeriesSlotRelative(currentPageData, slot);
 
-                                const mapped = mapSlotToFittedPx(
+                                const mapped = mapSlotToFittedMm(
                                   slotRelativeX,
                                   slotRelativeY,
                                   slotRelativeWidth,
@@ -819,10 +875,10 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
                                     key={slot.id}
                                     className="absolute flex items-center overflow-visible"
                                     style={{
-                                      left: mapped.x,
-                                      top: mapped.y,
-                                      width: mapped.width,
-                                      height: mapped.height,
+                                      left: `${mapped.x}mm`,
+                                      top: `${mapped.y}mm`,
+                                      width: `${mapped.width}mm`,
+                                      height: `${mapped.height}mm`,
                                       backgroundColor: slot.backgroundColor,
                                       border: `${slot.borderWidth}px solid ${slot.borderColor}`,
                                       borderRadius: slot.borderRadius,

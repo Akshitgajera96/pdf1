@@ -103,13 +103,16 @@ async function resolveS3ImagesInLayout(layout) {
   return { ...layout, items: resolved };
 }
 
-const A4_WIDTH_PT = 595.276;
-const A4_HEIGHT_PT = 841.89;
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const PT_PER_MM = 72 / 25.4;
 const PX_TO_PT = 72 / 96;
-const A4_FOOTER_PX = 40;
+
+const A4_WIDTH_PT = A4_WIDTH_MM * PT_PER_MM;
+const A4_HEIGHT_PT = A4_HEIGHT_MM * PT_PER_MM;
 const TICKETS_PER_PAGE = 4;
-const TICKET_HEIGHT_PX = (1123 - A4_FOOTER_PX) / TICKETS_PER_PAGE;
-const TICKET_HEIGHT_PT = TICKET_HEIGHT_PX * PX_TO_PT;
+const TICKET_HEIGHT_MM = A4_HEIGHT_MM / TICKETS_PER_PAGE;
+const TICKET_HEIGHT_PT = TICKET_HEIGHT_MM * PT_PER_MM;
 
 const svgServiceUrl =
   process.env.SVG_TO_PDF_SERVICE_URL ||
@@ -235,12 +238,10 @@ async function renderVectorLayoutToPdfBuffer(layout) {
   const x = (A4_WIDTH_PT - drawW) / 2;
 
   for (let i = 0; i < TICKETS_PER_PAGE; i += 1) {
-    const topYpx = TICKET_HEIGHT_PX * i;
-    const bottomYpt = A4_HEIGHT_PT - (topYpx + TICKET_HEIGHT_PX) * PX_TO_PT;
-
+    const ticketBottomYpt = A4_HEIGHT_PT - (i + 1) * TICKET_HEIGHT_PT;
     page.drawPage(embeddedTicket, {
       x,
-      y: bottomYpt + (TICKET_HEIGHT_PT - drawH) / 2,
+      y: ticketBottomYpt + (TICKET_HEIGHT_PT - drawH) / 2,
       xScale: scale,
       yScale: scale,
     });
@@ -252,9 +253,14 @@ async function renderVectorLayoutToPdfBuffer(layout) {
     const rawText = typeof item.text === "string" ? item.text : "";
     if (!rawText) continue;
 
-    const xPt = (Number(item.x) || 0) * PX_TO_PT;
-    const yPt = A4_HEIGHT_PT - (Number(item.y) || 0) * PX_TO_PT;
-    const sizePt = (Number(item.fontSize) || 12) * PX_TO_PT;
+    const unit = item.unit === 'mm' || layout?.unit === 'mm' ? 'mm' : 'px';
+    const xRaw = Number(item.x) || 0;
+    const yRaw = Number(item.y) || 0;
+    const sizeRaw = Number(item.fontSize) || 12;
+
+    const xPt = unit === 'mm' ? xRaw * PT_PER_MM : xRaw * PX_TO_PT;
+    const yPt = A4_HEIGHT_PT - (unit === 'mm' ? yRaw * PT_PER_MM : yRaw * PX_TO_PT);
+    const sizePt = unit === 'mm' ? sizeRaw * PT_PER_MM : sizeRaw * PX_TO_PT;
 
     page.drawText(rawText, {
       x: xPt,
@@ -264,6 +270,22 @@ async function renderVectorLayoutToPdfBuffer(layout) {
   }
 
   return Buffer.from(await out.save());
+}
+
+async function validatePdfIsA4(pdfBuffer) {
+  const pdfDoc = await PDFDocument.load(pdfBuffer);
+  const pages = pdfDoc.getPages();
+  const p0 = pages && pages.length ? pages[0] : null;
+  if (!p0) return { ok: false, reason: 'missing_page' };
+
+  const w = p0.getWidth();
+  const h = p0.getHeight();
+
+  const eps = 0.05;
+  const okPortrait = Math.abs(w - A4_WIDTH_PT) <= eps && Math.abs(h - A4_HEIGHT_PT) <= eps;
+  const okLandscape = Math.abs(w - A4_HEIGHT_PT) <= eps && Math.abs(h - A4_WIDTH_PT) <= eps;
+  const ok = okPortrait || okLandscape;
+  return { ok, widthPt: w, heightPt: h, eps };
 }
 
 // --------------------------------------------------
@@ -343,6 +365,28 @@ async function start() {
           pdf = await generateOutputPdfBuffer([layout]);
         }
         if (!pdf?.length) throw new Error("Empty PDF");
+
+        try {
+          const v = await validatePdfIsA4(pdf);
+          dbg('render', jobId, 'pdf_size_check', {
+            pageIndex,
+            ok: v?.ok === true,
+            widthPt: v?.widthPt,
+            heightPt: v?.heightPt,
+            expectedWidthPt: A4_WIDTH_PT,
+            expectedHeightPt: A4_HEIGHT_PT,
+            eps: v?.eps,
+          });
+          if (!v || v.ok !== true) {
+            throw new Error('Generated PDF is not exact A4');
+          }
+        } catch (e) {
+          dbg('render', jobId, 'pdf_size_check_failed', {
+            pageIndex,
+            message: e && e.message,
+          });
+          throw e;
+        }
 
         const { key } = await uploadToS3(
           pdf,

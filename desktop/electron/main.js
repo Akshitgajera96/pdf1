@@ -878,7 +878,7 @@ async function silentPrintPdfImpl(event, { url, printerName, printerKind, copies
     const color = colorMode === 'grayscale' ? false : true;
     const parsedRanges = parsePageRanges(pageRange);
 
-    const printOptions = {
+    const basePrintOptions = {
       silent: true,
       printBackground: true,
       deviceName: printerName,
@@ -886,6 +886,15 @@ async function silentPrintPdfImpl(event, { url, printerName, printerKind, copies
       ...(Array.isArray(parsedRanges) && parsedRanges.length > 0 ? { pageRanges: parsedRanges } : {}),
       ...(landscape ? { landscape: true } : {}),
       ...(color === false ? { color: false } : {}),
+    };
+
+    // Attempt to enforce exact A4 output with no driver/app-added margins and no fit-to-page.
+    // Some Electron versions/printers may ignore or reject these options; we fall back to legacy options.
+    const strictPrintOptions = {
+      ...basePrintOptions,
+      pageSize: 'A4',
+      marginsType: 1, // no margins
+      scaleFactor: 100,
     };
 
     const runPrintAttempt = async (attemptLabel, opts) => {
@@ -961,7 +970,18 @@ async function silentPrintPdfImpl(event, { url, printerName, printerKind, copies
       });
     };
 
-    const ok = await runPrintAttempt('silent', printOptions);
+    let ok = false;
+    try {
+      await runPrintAttempt('strict_a4', strictPrintOptions);
+      ok = true;
+    } catch (err) {
+      logStep('print_strict_failed', {
+        error: err?.message || String(err),
+      });
+
+      await runPrintAttempt('legacy', basePrintOptions);
+      ok = true;
+    }
 
     cleanup();
 
