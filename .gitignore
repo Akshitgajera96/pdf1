@@ -1,0 +1,69 @@
+# dependencies
+**/node_modules/
+
+# production builds / bundles
+**/dist/
+**/build/
+**/out/
+**/.next/
+**/.nuxt/
+
+# coverage
+**/coverage/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+**/*.log
+
+# dotenv / secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Electron / electron-builder
+**/release/
+**/releases/
+**/win-unpacked/
+**/mac/
+**/linux-unpacked/
+**/*.blockmap
+**/*.dmg
+**/*.exe
+**/*.AppImage
+**/*.snap
+**/*.deb
+**/*.rpm
+**/*.msi
+
+# caches
+**/.cache/
+**/.parcel-cache/
+**/.turbo/
+**/.eslintcache
+
+# TypeScript
+**/*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+
+# local runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Supabase local
+frontend/supabase/.branches/
+frontend/supabase/.temp/
+frontend/supabase/.env

@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: secure-print-hub-backend
+    env: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      # Set these in the Render dashboard or via secrets before/after deploy
+      - key: PORT
+        value: "4000"
+      - key: MONGO_URI
+        # Example: fromSecret if you create a secret called "mongo-uri" in Render
+        # fromSecret: mongo-uri
+        value: ""
+      - key: REDIS_URL
+        value: ""
+
+  - type: web
+    name: secure-print-hub-frontend
+    env: static
+    rootDir: frontend
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Point this to the backend service URL once it is deployed on Render.
+      # For example: https://secure-print-hub-backend.onrender.com
+      - key: VITE_API_BASE_URL
+        value: ""

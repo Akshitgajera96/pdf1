@@ -1,0 +1,24 @@
+{
+  "name": "secure-print-hub-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "npx -y concurrently --kill-others-on-fail \"npm --prefix ../frontend run dev -- --port 8081 --strictPort\" \"npx -y wait-on http://localhost:8081 && npx -y cross-env ELECTRON_DEV=1 ELECTRON_RENDERER_URL=http://localhost:8081 npx -y electron .\"",
+    "dev:electron": "npx -y cross-env ELECTRON_DEV=1 npx -y electron .",
+    "build:frontend": "npm --prefix ../frontend run build",
+    "build": "npm run build:frontend && electron-builder --config electron-builder.yml",
+    "pack": "npm run build:frontend && electron-builder --dir --config electron-builder.yml"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "cross-env": "^7.0.3",
+    "electron": "^32.2.5",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^8.0.5"
+  }
+}

@@ -1,0 +1,43 @@
+appId: com.secureprinthub.desktop
+productName: SecurePrintHub
+
+directories:
+  output: dist
+
+files:
+  - electron/**
+  - package.json
+  - node_modules/**
+
+extraResources:
+  - from: ../frontend/dist
+    to: frontend-dist
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  executableName: SecurePrintHub
+  icon: ../frontend/public/favicon.ico
+  signAndEditExecutable: false
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.business
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  sign: false
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+
+artifactName: ${productName}-Setup-${version}.exe
