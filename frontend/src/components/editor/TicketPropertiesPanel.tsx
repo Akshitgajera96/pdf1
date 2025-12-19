@@ -51,6 +51,11 @@ export const TicketPropertiesPanel: React.FC<TicketPropertiesPanelProps> = ({
     );
   }
 
+  const parseIntOr = (raw: string, fallback: number) => {
+    const v = parseInt(raw, 10);
+    return Number.isFinite(v) ? v : fallback;
+  };
+
   return (
     <div className="w-80 bg-card border-l border-border flex flex-col">
       <div className="p-4 border-b border-border">
@@ -76,7 +81,7 @@ export const TicketPropertiesPanel: React.FC<TicketPropertiesPanelProps> = ({
                   <span
                     className="font-mono font-bold"
                     style={{
-                      fontSize: Math.min(slot.letterStyles[index]?.fontSize || slot.defaultFontSize, 24),
+                      fontSize: Math.min(slot.letterStyles[index]?.fontSize ?? slot.defaultFontSize, 24),
                       color: slot.color,
                     }}
                   >
@@ -84,10 +89,15 @@ export const TicketPropertiesPanel: React.FC<TicketPropertiesPanelProps> = ({
                   </span>
                   <Input
                     type="number"
-                    value={slot.letterStyles[index]?.fontSize || slot.defaultFontSize}
-                    onChange={(e) => onUpdateLetterFontSize(index, parseInt(e.target.value) || 12)}
+                    value={slot.letterStyles[index]?.fontSize ?? slot.defaultFontSize}
+                    onChange={(e) =>
+                      onUpdateLetterFontSize(
+                        index,
+                        parseIntOr(e.target.value, slot.letterStyles[index]?.fontSize ?? slot.defaultFontSize)
+                      )
+                    }
                     className="w-12 h-6 text-[10px] text-center p-1"
-                    min={8}
+                    min={0}
                     max={72}
                   />
                   <Input
@@ -123,7 +133,7 @@ export const TicketPropertiesPanel: React.FC<TicketPropertiesPanelProps> = ({
               <Slider
                 value={[slot.defaultFontSize]}
                 onValueChange={([v]) => onUpdateSlot({ defaultFontSize: v })}
-                min={8}
+                min={0}
                 max={72}
                 step={1}
                 className="flex-1"
@@ -131,9 +141,9 @@ export const TicketPropertiesPanel: React.FC<TicketPropertiesPanelProps> = ({
               <Input
                 type="number"
                 value={slot.defaultFontSize}
-                onChange={(e) => onUpdateSlot({ defaultFontSize: parseInt(e.target.value) || 14 })}
+                onChange={(e) => onUpdateSlot({ defaultFontSize: parseIntOr(e.target.value, slot.defaultFontSize) })}
                 className="w-16 h-7 text-xs"
-                min={8}
+                min={0}
                 max={72}
               />
             </div>

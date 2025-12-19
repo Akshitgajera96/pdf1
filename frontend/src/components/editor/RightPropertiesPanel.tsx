@@ -41,6 +41,11 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
     );
   }
 
+  const parseIntOr = (raw: string, fallback: number) => {
+    const v = parseInt(raw, 10);
+    return Number.isFinite(v) ? v : fallback;
+  };
+
   return (
     <div className="w-72 bg-card border-l border-border flex flex-col">
       <div className="p-4 border-b border-border">
@@ -177,7 +182,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               <Slider
                 value={[slot.fontSize]}
                 onValueChange={([v]) => onUpdateSlot({ fontSize: v })}
-                min={8}
+                min={0}
                 max={72}
                 step={1}
                 className="flex-1"
@@ -185,9 +190,9 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               <Input
                 type="number"
                 value={slot.fontSize}
-                onChange={(e) => onUpdateSlot({ fontSize: parseInt(e.target.value) || 14 })}
+                onChange={(e) => onUpdateSlot({ fontSize: parseIntOr(e.target.value, slot.fontSize) })}
                 className="w-16 h-7 text-xs"
-                min={8}
+                min={0}
                 max={72}
               />
             </div>

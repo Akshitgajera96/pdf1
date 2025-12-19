@@ -87,11 +87,11 @@ function computeFittedImageRectPx(
     return { x: boxX, y: boxY, width: boxW, height: boxH };
   }
 
-  const scale = Math.min(boxW / imageW, boxH / imageH);
+  const scale = Math.max(boxW / imageW, boxH / imageH);
   const width = imageW * scale;
   const height = imageH * scale;
-  const x = boxX;
-  const y = boxY;
+  const x = boxX + (boxW - width) / 2;
+  const y = boxY + (boxH - height) / 2;
 
   return { x, y, width, height };
 }
@@ -112,17 +112,17 @@ function computeFittedImageRectPercent(
   const imageAR = imageW / imageH;
 
   if (imageAR >= boxAR) {
-    const width = boxWPercent;
-    const height = boxWPercent / imageAR;
-    const x = boxXPercent;
+    const height = boxHPercent;
+    const width = boxHPercent * imageAR;
+    const x = boxXPercent + (boxWPercent - width) / 2;
     const y = boxYPercent;
     return { x, y, width, height };
   }
 
-  const height = boxHPercent;
-  const width = boxHPercent * imageAR;
-  const y = boxYPercent;
+  const width = boxWPercent;
+  const height = boxWPercent / imageAR;
   const x = boxXPercent;
+  const y = boxYPercent + (boxHPercent - height) / 2;
   return { x, y, width, height };
 }
 
@@ -138,11 +138,11 @@ function computeFittedImageRectMm(
     return { x: boxX, y: boxY, width: boxW, height: boxH };
   }
 
-  const scale = Math.min(boxW / imageW, boxH / imageH);
+  const scale = Math.max(boxW / imageW, boxH / imageH);
   const width = imageW * scale;
   const height = imageH * scale;
-  const x = boxX;
-  const y = boxY;
+  const x = boxX + (boxW - width) / 2;
+  const y = boxY + (boxH - height) / 2;
 
   return { x, y, width, height };
 }
@@ -284,9 +284,9 @@ function buildVectorLayoutPages(
 
         const slotX = mapped.x;
         const slotY = baseY + mapped.y;
-        const fontSizePx = seriesForSlot.letterStyles?.[0]?.fontSize || slot.defaultFontSize;
+        const fontSizePx = seriesForSlot.letterStyles?.[0]?.fontSize ?? slot.defaultFontSize;
         const fontSizeMm = fontSizePx * PX_TO_MM;
-        const letterFontSizesMm = seriesForSlot.letterStyles?.map((ls) => (ls.fontSize || slot.defaultFontSize) * PX_TO_MM);
+        const letterFontSizesMm = seriesForSlot.letterStyles?.map((ls) => (ls.fontSize ?? slot.defaultFontSize) * PX_TO_MM);
         const letterOffsetsMm = seriesForSlot.letterStyles?.map((ls) => (ls.offsetY ?? 0) * PX_TO_MM);
         const letterSpacingAfterXmm = seriesForSlot.letterStyles?.map((ls) => (ls.spacingAfterX ?? 0) * PT_TO_MM);
 
@@ -492,9 +492,9 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
             const slotX = mapped.x;
             const slotY = baseY + mapped.y;
-            const fontSizePx = seriesForSlot.letterStyles?.[0]?.fontSize || slot.defaultFontSize;
+            const fontSizePx = seriesForSlot.letterStyles?.[0]?.fontSize ?? slot.defaultFontSize;
             const fontSizeMm = fontSizePx * PX_TO_MM;
-            const letterFontSizesMm = seriesForSlot.letterStyles?.map((ls) => (ls.fontSize || slot.defaultFontSize) * PX_TO_MM);
+            const letterFontSizesMm = seriesForSlot.letterStyles?.map((ls) => (ls.fontSize ?? slot.defaultFontSize) * PX_TO_MM);
             const letterOffsetsMm = seriesForSlot.letterStyles?.map((ls) => (ls.offsetY ?? 0) * PX_TO_MM);
             const letterSpacingAfterXmm = seriesForSlot.letterStyles?.map((ls) => (ls.spacingAfterX ?? 0) * PT_TO_MM);
 
@@ -576,12 +576,12 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
 
       const lettersHtml = seriesText.split('').map((letter, idx) => {
         const style = seriesForSlot?.letterStyles[idx];
-        const fontSizeMm = (style?.fontSize || slot.defaultFontSize) * PX_TO_MM;
-        const offsetYmm = (style?.offsetY || 0) * PX_TO_MM;
+        const fontSizeMm = ((style?.fontSize ?? slot.defaultFontSize) * PX_TO_MM);
+        const offsetYmm = ((style?.offsetY ?? 0) * PX_TO_MM);
         const cumulativeSpacingMm = seriesText
           .split('')
           .slice(0, idx)
-          .reduce((sum, _, i) => sum + ((seriesForSlot?.letterStyles[i]?.spacingAfterX || 0) * PT_TO_MM), 0);
+          .reduce((sum, _, i) => sum + ((seriesForSlot?.letterStyles[i]?.spacingAfterX ?? 0) * PT_TO_MM), 0);
 
         const displayLetter = letter === ' ' ? '&nbsp;' : letter;
         return `<span style="
@@ -902,13 +902,13 @@ export const TicketOutputPreview: React.FC<TicketOutputPreviewProps> = ({ pages,
                                         const seriesText = seriesForSlot?.seriesValue ?? '';
                                         return seriesText.split('').map((letter, letterIdx) => {
                                           const style = seriesForSlot?.letterStyles[letterIdx];
-                                          const fontSize = style?.fontSize || slot.defaultFontSize;
-                                          const offsetY = style?.offsetY || 0;
+                                          const fontSize = style?.fontSize ?? slot.defaultFontSize;
+                                          const offsetY = style?.offsetY ?? 0;
                                           const cumulativeSpacingPt = seriesText
                                             .split('')
                                             .slice(0, letterIdx)
                                             .reduce(
-                                              (sum, _, i) => sum + (seriesForSlot?.letterStyles[i]?.spacingAfterX || 0),
+                                              (sum, _, i) => sum + (seriesForSlot?.letterStyles[i]?.spacingAfterX ?? 0),
                                               0
                                             );
                                           const cumulativeX = cumulativeSpacingPt * (96 / 72);

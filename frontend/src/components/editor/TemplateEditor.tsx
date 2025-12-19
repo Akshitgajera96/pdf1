@@ -431,11 +431,12 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({ pdfCanvasRef, pd
                       type="number"
                       value={selectedBlock?.fontSize || fontSize}
                       onChange={(e) => {
-                        const val = parseInt(e.target.value) || 14;
+                        const parsed = parseInt(e.target.value, 10);
+                        const val = Number.isFinite(parsed) ? parsed : (selectedBlock?.fontSize ?? fontSize);
                         setFontSize(val);
                         if (selectedBlockId) updateBlockStyle('fontSize', val);
                       }}
-                      min={8}
+                      min={0}
                       max={72}
                       className="h-8 text-sm"
                     />
